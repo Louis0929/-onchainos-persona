@@ -1,0 +1,44 @@
+{
+  "name": "onchainos-persona",
+  "version": "0.1.0",
+  "description": "OnChainOS Persona — On-chain identity profiling engine",
+  "type": "module",
+  "main": "src/agent/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/agent/cli.ts",
+    "dev:server": "tsx src/server/index.ts",
+    "dev:web": "cd persona-web && npm run dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "blockchain",
+    "onchainos",
+    "persona",
+    "profiling",
+    "kyc",
+    "defi",
+    "trust-score"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Louis0929/onchainos-persona"
+  },
+  "author": "Louis0929",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1"
+  }
+}
