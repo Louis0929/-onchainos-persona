@@ -1,26 +1,106 @@
 // ─── OnChainOS Persona Types ───
+// Inspired by MBTI — 4 binary axes create 16 on-chain personality types
+
+/**
+ * On-chain MBTI: 4 axes, 2 letters each
+ *
+ * Axis 1: Energy Source (how they enter the market)
+ *   H = Hunter (主動出擊 — seeks new tokens, early entry, FOMO-driven)
+ *   G = Guardian (守勢佈局 — researches first, waits for confirmation, disciplined)
+ *
+ * Axis 2: Risk Appetite (how much risk they take)
+ *   R = Risker (高風險偏好 — meme, leverage, all-in, degen plays)
+ *   S = Stabilizer (低風險偏好 — blue chips, stablecoins, DCA)
+ *
+ * Axis 3: Decision Speed (how fast they act)
+ *   F = Flash (閃電決策 — snipers, MEV, instant in/out, scalping)
+ *   P = Patient (耐心決策 — long hold, fundamental analysis, slow DCA)
+ *
+ * Axis 4: Social Mode (how they interact on-chain)
+ *   C = Crowd (群眾追隨 — follows trends, copy-trades, herd behavior)
+ *   L = Lone (獨行俠 — unique paths, contra-trades, anti-herd)
+ *
+ * 16 types: HRFC, HRFL, HRPC, HRPL, HSFC, HSFL, HSPC, HSPL,
+ *           GRFC, GRFL, GRPC, GRPL, GSFC, GSFL, GSPC, GSPL
+ */
+
+export type OnchainMBTI =
+  | "HRFC" | "HRFL" | "HRPC" | "HRPL"
+  | "HSFC" | "HSFL" | "HSPC" | "HSPL"
+  | "GRFC" | "GRFL" | "GRPC" | "GRPL"
+  | "GSFC" | "GSFL" | "GSPC" | "GSPL";
+
+export const MBTI_DESCRIPTIONS: Record<OnchainMBTI, { emoji: string; name: string; desc: string }> = {
+  HRFC: { emoji: "🎰", name: "Degen Sniper",     desc: "主動出擊、高風險、閃電決策、跟風 — 典型的 Meme 狙擊手" },
+  HRFL: { emoji: "🗡️", name: "Lone Wolf",        desc: "主動出擊、高風險、閃電決策、獨行 — 反市場操作的快進快出獵人" },
+  HRPC: { emoji: "🎲", name: "High Roller",      desc: "主動出擊、高風險、耐心持倉、跟風 — FOMO 進場但死扛的賭徒" },
+  HRPL: { emoji: "🎭", name: "Contrarian Whale",  desc: "主動出擊、高風險、耐心持倉、獨行 — 逆勢重倉的傳奇鯨魚" },
+  HSFC: { emoji: "⚡", name: "Flash Trader",     desc: "主動出擊、穩健選幣、閃電決策、跟風 — 趨勢突破時快速跟單" },
+  HSFL: { emoji: "🔬", name: "Alpha Scanner",    desc: "主動出擊、穩健選幣、閃電決策、獨行 — 獨立研究後快速佈局" },
+  HSPC: { emoji: "📈", name: "Trend Rider",      desc: "主動出擊、穩健選幣、耐心持倉、跟風 — 順勢而為的波段交易者" },
+  HSPL: { emoji: "🎯", name: "Strategic Hunter",  desc: "主動出擊、穩健選幣、耐心持倉、獨行 — 有紀律的獨立佈局者" },
+  GRFC: { emoji: "🌪️", name: "FOMO Chaser",     desc: "守勢佈局、高風險、閃電決策、跟風 — 平時謹慎但 FOMO 時追高殺低" },
+  GRFL: { emoji: "🦊", name: "Shadow Fox",       desc: "守勢佈局、高風險、閃電決策、獨行 — 低調但出手就是大單" },
+  GRPC: { emoji: "🐑", name: "Herd Believer",    desc: "守勢佈局、高風險、耐心持倉、跟風 — 跟著社群信念死扛" },
+  GRPL: { emoji: "🐋", name: "Sleeping Whale",   desc: "守勢佈局、高風險、耐心持倉、獨行 — 沉默的重倉持有者" },
+  GSFC: { emoji: "🤖", name: "Bot Farmer",       desc: "守勢佈局、穩健選幣、閃電決策、跟風 — 系統化、可能是機器人" },
+  GSFL: { emoji: "🕵️", name: "Silent Operator",  desc: "守勢佈局、穩健選幣、閃電決策、獨行 — 低調套利、MEV 或做市" },
+  GSPC: { emoji: "🤲", name: "Diamond Hodler",   desc: "守勢佈局、穩健選幣、耐心持倉、跟風 — 信仰型佛系持幣" },
+  GSPL: { emoji: "🏔️", name: "Monk",            desc: "守勢佈局、穩健選幣、耐心持倉、獨行 — 鏈上隱士，極致自律" },
+};
+
+/** Legacy archetype (kept for compatibility, mapped from MBTI) */
+export type PersonaArchetype = OnchainMBTI;
+
+export const ARCHETYPE_LABELS: Record<OnchainMBTI, string> = Object.fromEntries(
+  Object.entries(MBTI_DESCRIPTIONS).map(([k, v]) => [k, `${v.emoji} ${v.name}`]),
+) as Record<OnchainMBTI, string>;
+
+// ─── MBTI Axis scores ───
+
+export interface MBTIAxes {
+  /** Energy: 0-100, >50 = Hunter, <50 = Guardian */
+  energy: number;
+  /** Risk: 0-100, >50 = Risker, <50 = Stabilizer */
+  risk: number;
+  /** Speed: 0-100, >50 = Flash, <50 = Patient */
+  speed: number;
+  /** Social: 0-100, >50 = Crowd, <50 = Lone */
+  social: number;
+}
+
+export function computeMBTI(axes: MBTIAxes): OnchainMBTI {
+  const e = axes.energy >= 50 ? "H" : "G";
+  const r = axes.risk >= 50 ? "R" : "S";
+  const s = axes.speed >= 50 ? "F" : "P";
+  const c = axes.social >= 50 ? "C" : "L";
+  return `${e}${r}${s}${c}` as OnchainMBTI;
+}
+
+export function mbtiToAxes(mbti: OnchainMBTI): MBTIAxes {
+  return {
+    energy: mbti[0] === "H" ? 70 : 30,
+    risk: mbti[1] === "R" ? 70 : 30,
+    speed: mbti[2] === "F" ? 70 : 30,
+    social: mbti[3] === "C" ? 70 : 30,
+  };
+}
+
+// ─── Data types ───
 
 /** Transaction pattern analysis */
 export interface TransactionPattern {
-  /** Hourly distribution of trades (0-23), normalized to 0-1 */
   hourlyDistribution: number[];
-  /** "night_owl" | "early_bird" | "machine" | "balanced" */
   activityRhythm: string;
-  /** Average trades per day */
   tradeFrequency: number;
-  /** Total trade count */
   totalTrades: number;
-  /** Median trade size in USD */
   medianTradeSize: number;
-  /** Trade size distribution: { small: <100, medium: 100-10k, large: 10k-100k, whale: >100k } */
   sizeDistribution: { small: number; medium: number; large: number; whale: number };
-  /** Average holding time in hours */
   avgHoldingTimeHours: number;
-  /** Weekend vs weekday trade ratio */
   weekendRatio: number;
 }
 
-/** Fund flow node — an entity the address interacts with */
+/** Fund flow node */
 export interface FlowNode {
   address: string;
   label: string;
@@ -32,97 +112,53 @@ export interface FlowNode {
 
 /** Fund flow summary */
 export interface FundFlow {
-  /** Top sources of funds flowing IN */
   topSources: FlowNode[];
-  /** Top destinations of funds flowing OUT */
   topDestinations: FlowNode[];
-  /** DeFi protocol interactions */
   defiInteractions: { protocol: string; action: string; count: number; totalUsd: number }[];
-  /** Bridge activity */
   bridgeActivity: { from: string; to: string; count: number; totalUsd: number }[];
-  /** Exchange deposit/withdrawal summary */
   exchangeFlow: { exchange: string; deposited: number; withdrawn: number }[];
-  /** Overall flow classification */
   flowType: "saver" | "trader" | "farmer" | "launderer_suspect" | "bridge_hopper" | "hodler";
 }
 
-/** Personality archetype */
-export type PersonaArchetype =
-  | "whale"           // 🐋 大鯨魚 — high value, low frequency
-  | "degen"           // 🎰 Degen — high risk, meme-heavy
-  | "diamond_hands"   // 💎 鑽石手 — long hold, low sell
-  | "paper_hands"     // 🧻 紙手 — quick panic sell
-  | "market_maker"    // 🏭 做市商 — high frequency, small spread
-  | "gambler"         // 🎲 賭徒 — all-in patterns, meme/rug
-  | "farmer"          // 🌾 農夫 — DeFi yield farming
-  | "project_dev"     // 👨‍💻 項目方 — contract deploys, team wallets
-  | "retail"          // 🛒 散戶 — small amounts, trend-following
-  | "launderer"       // 🌀 洗錢嫌疑 — rapid cross-chain, fragmented
-  | "hodler"          // 🤲 鑽石手佛系持幣 — very low activity
-  | "bridge_hopper";  // 🌉 跨鏈玩家 — frequent bridging
-
-export const ARCHETYPE_LABELS: Record<PersonaArchetype, string> = {
-  whale: "🐋 大鯨魚",
-  degen: "🎰 Degen",
-  diamond_hands: "💎 鑽石手",
-  paper_hands: "🧻 紙手",
-  market_maker: "🏭 做市商",
-  gambler: "🎲 賭徒",
-  farmer: "🌾 農夫",
-  project_dev: "👨‍💻 項目方",
-  retail: "🛒 散戶",
-  launderer: "🌀 洗錢嫌疑",
-  hodler: "🤲 佛系持幣",
-  bridge_hopper: "🌉 跨鏈玩家",
-};
-
-/** Personality portrait */
+/** Personality portrait — MBTI style */
 export interface PersonalityPortrait {
-  /** Primary archetype */
-  archetype: PersonaArchetype;
+  /** MBTI type e.g. HRFC */
+  mbti: OnchainMBTI;
+  /** Axis scores (continuous values for radar chart) */
+  axes: MBTIAxes;
   /** Confidence 0-100 */
   confidence: number;
-  /** Secondary traits */
-  secondaryArchetypes: PersonaArchetype[];
   /** Human-readable description */
   summary: string;
   /** Key evidence supporting this classification */
   evidence: string[];
   /** Personality radar: 6-axis scores 0-100 */
   radar: {
-    risk: number;        // 風險偏好
-    activity: number;    // 活躍度
-    sophistication: number; // 專業度
-    loyalty: number;     // 持有忠誠度
-    social: number;      // 社交互動度
-    timing: number;      // 時機把握
+    risk: number;
+    activity: number;
+    sophistication: number;
+    loyalty: number;
+    social: number;
+    timing: number;
   };
+  /** Backward compat */
+  archetype: OnchainMBTI;
+  secondaryArchetypes: OnchainMBTI[];
 }
 
-/** Trust score — reusable for ExChain, lending, due diligence */
+/** Trust score — reusable for lending, KYC, due diligence */
 export interface TrustScore {
-  /** Overall trust score 0-1000 */
   score: number;
-  /** Risk level */
   level: "very_high" | "high" | "medium" | "low" | "very_low";
-  /** Sub-scores */
   breakdown: {
-    /** Is this a real human? (vs bot/sybil) */
-    authenticity: number;     // 0-100
-    /** Financial responsibility */
-    financialHealth: number;  // 0-100
-    /** On-chain reputation */
-    reputation: number;       // 0-100
-    /** Behavioral consistency over time */
-    consistency: number;      // 0-100
-    /** Exposure to risky protocols/addresses */
-    riskExposure: number;     // 0-100 (higher = more risky)
+    authenticity: number;
+    financialHealth: number;
+    reputation: number;
+    consistency: number;
+    riskExposure: number;
   };
-  /** Red flags */
   redFlags: string[];
-  /** Green flags */
   greenFlags: string[];
-  /** Last updated timestamp */
   updatedAt: string;
 }
 

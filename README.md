@@ -2,16 +2,48 @@
 
 **鏈上身分畫像引擎** — "這個地址背後是什麼人？"
 
-OnChainOS Persona analyzes on-chain behavior to build a comprehensive identity profile for any wallet address. It goes beyond balance tracking to answer: **who is this address?**
+OnChainOS Persona analyzes on-chain behavior using an **MBTI-inspired classification system** to build a comprehensive identity profile for any wallet address.
+
+## On-Chain MBTI System
+
+4 binary axes create **16 on-chain personality types**:
+
+| Axis | Letters | Meaning |
+|---|---|---|
+| Energy Source | **H**unter / **G**uardian | 主動出擊 vs 守勢佈局 |
+| Risk Appetite | **R**isker / **S**tabilizer | 高風險偏好 vs 低風險偏好 |
+| Decision Speed | **F**lash / **P**atient | 閃電決策 vs 耐心持倉 |
+| Social Mode | **C**rowd / **L**one | 群眾追隨 vs 獨行俠 |
+
+### The 16 Types
+
+| Type | Name | Description |
+|---|---|---|
+| HRFC | 🎰 Degen Sniper | 主動出擊、高風險、閃電決策、跟風 |
+| HRFL | 🗡️ Lone Wolf | 主動出擊、高風險、閃電決策、獨行 |
+| HRPC | 🎲 High Roller | 主動出擊、高風險、耐心持倉、跟風 |
+| HRPL | 🎭 Contrarian Whale | 主動出擊、高風險、耐心持倉、獨行 |
+| HSFC | ⚡ Flash Trader | 主動出擊、穩健選幣、閃電決策、跟風 |
+| HSFL | 🔬 Alpha Scanner | 主動出擊、穩健選幣、閃電決策、獨行 |
+| HSPC | 📈 Trend Rider | 主動出擊、穩健選幣、耐心持倉、跟風 |
+| HSPL | 🎯 Strategic Hunter | 主動出擊、穩健選幣、耐心持倉、獨行 |
+| GRFC | 🌪️ FOMO Chaser | 守勢佈局、高風險、閃電決策、跟風 |
+| GRFL | 🦊 Shadow Fox | 守勢佈局、高風險、閃電決策、獨行 |
+| GRPC | 🐑 Herd Believer | 守勢佈局、高風險、耐心持倉、跟風 |
+| GRPL | 🐋 Sleeping Whale | 守勢佈局、高風險、耐心持倉、獨行 |
+| GSFC | 🤖 Bot Farmer | 守勢佈局、穩健選幣、閃電決策、跟風 |
+| GSFL | 🕵️ Silent Operator | 守勢佈局、穩健選幣、閃電決策、獨行 |
+| GSPC | 🤲 Diamond Hodler | 守勢佈局、穩健選幣、耐心持倉、跟風 |
+| GSPL | 🏔️ Monk | 守勢佈局、穩健選幣、耐心持倉、獨行 |
 
 ## Core Capabilities
 
 | Capability | Description |
 |---|---|
 | 🕐 Transaction Pattern Analysis | Time distribution (night owl? bot?), frequency, size distribution |
-| 💰 Fund Flow Mapping | Where money comes from, where it goes, who they interact with (exchanges, DeFi, bridges) |
-| 🎭 Personality Portrait | Archetype classification: whale? degen? market maker? gambler? |
-| 🛡️ Trust Score | Reusable 0-1000 score for ExChain, lending, KYC, due diligence |
+| 💰 Fund Flow Mapping | Where money comes from, where it goes, who they interact with |
+| 🧬 On-Chain MBTI | 16-type personality classification with 4-axis scores |
+| 🛡️ Trust Score | Reusable 0-1000 score for lending, KYC, due diligence |
 
 ## Architecture
 
@@ -19,13 +51,13 @@ OnChainOS Persona analyzes on-chain behavior to build a comprehensive identity p
 onchainos-persona/
 ├── src/
 │   ├── agent/
-│   │   ├── persona-analyzer.ts   # Core analysis engine
+│   │   ├── persona-analyzer.ts   # Core analysis engine (MBTI + trust)
 │   │   ├── cli.ts                # CLI entry point
 │   │   └── index.ts              # Exports
 │   ├── server/
 │   │   └── index.ts              # Express API server (port 3102)
 │   ├── types/
-│   │   ├── persona.ts            # Persona-specific types
+│   │   ├── persona.ts            # MBTI types + all persona types
 │   │   └── onchainos.ts          # On-chain data types
 │   └── utils/
 │       └── onchainos.ts          # OKX API integration
@@ -36,15 +68,14 @@ onchainos-persona/
 
 | Endpoint | Description |
 |---|---|
-| `POST /api/persona` | Full persona report |
-| `POST /api/trust-score` | Trust score only (lightweight, for integration) |
-| `POST /api/radar` | Radar chart data (for UI visualization) |
+| `POST /api/persona` | Full persona report (MBTI + trust + patterns) |
+| `POST /api/trust-score` | Trust score only (lightweight) |
+| `POST /api/radar` | Radar chart data |
 | `GET /api/health` | Health check |
 
 ## Quick Start
 
 ```bash
-# Install
 npm install
 cd persona-web && npm install && cd ..
 
@@ -67,34 +98,6 @@ OKX_PASSPHRASE=    # OKX DEX passphrase
 OKX_ACCESS_TOKEN=  # OR use OAuth token instead
 ONCHAINOS_BIN=     # Path to onchainos CLI (fallback)
 ```
-
-## ExChain Integration
-
-ExChain can call `/api/trust-score` to enrich breakup reports with persona data:
-
-```
-POST /api/trust-score
-{ "address": "0x..." }
-
-→ { "trustScore": {...}, "archetype": "degen", "confidence": 75 }
-```
-
-## Persona Archetypes
-
-| Archetype | Label | Pattern |
-|---|---|---|
-| 🐋 whale | 大鯨魚 | High value, low frequency |
-| 🎰 degen | Degen | High risk, meme-heavy |
-| 💎 diamond_hands | 鑽石手 | Long hold, profitable |
-| 🧻 paper_hands | 紙手 | Quick panic sell |
-| 🏭 market_maker | 做市商 | High frequency, small spread |
-| 🎲 gambler | 賭徒 | All-in on meme/rug |
-| 🌾 farmer | 農夫 | DeFi yield farming |
-| 👨‍💻 project_dev | 項目方 | Contract deploys, team wallets |
-| 🛒 retail | 散戶 | Small amounts, trend-following |
-| 🌀 launderer | 洗錢嫌疑 | Rapid cross-chain, fragmented |
-| 🤲 hodler | 佛系持幣 | Very low activity |
-| 🌉 bridge_hopper | 跨鏈玩家 | Frequent bridging |
 
 ## License
 

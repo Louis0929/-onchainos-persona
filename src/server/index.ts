@@ -49,7 +49,7 @@ app.post("/api/persona", async (req, res, next) => {
   }
 });
 
-// Trust score only endpoint — lightweight, for ExChain/lending integration
+// Trust score only endpoint — lightweight, for third-party integration
 app.post("/api/trust-score", async (req, res, next) => {
   try {
     const { address, chains } = req.body as { address: string; chains?: string[] };

@@ -45,6 +45,7 @@ export default function App() {
             <h1 className="text-xl font-bold text-cyber-accent cyber-glow">
               OnChainOS Persona
             </h1>
+            <span className="text-[10px] text-cyber-pink font-mono">MBTI</span>
             <span className="text-xs text-gray-500 border border-cyber-border rounded px-2 py-0.5">
               v0.1.0
             </span>
@@ -81,7 +82,7 @@ export default function App() {
             </button>
           </div>
           <p className="text-xs text-gray-600 mt-2">
-            這個地址背後是什麼人？我們從交易模式、資金流向、行為特徵中找到答案。
+            這個地址背後是什麼人？鏈上 MBTI 四維度分析：H/G · R/S · F/P · C/L
           </p>
         </div>
 
