@@ -34,6 +34,10 @@ export interface MBTIAxes {
   risk: number;
   speed: number;
   social: number;
+  energyConfidence?: number;
+  riskConfidence?: number;
+  speedConfidence?: number;
+  socialConfidence?: number;
 }
 
 export const AXIS_LABELS = {

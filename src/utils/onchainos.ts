@@ -256,3 +256,31 @@ export async function getDexHistory(address: string, chain: string, beginMs?: nu
     return [];
   }
 }
+
+// ─── Batch Token PnL ───
+
+export async function getAllTokenPnL(
+  address: string,
+  chain: string,
+  tokenAddresses: string[],
+  maxTokens = 20,
+): Promise<TokenPnL[]> {
+  if (tokenAddresses.length === 0) return [];
+  const tokens = tokenAddresses.slice(0, maxTokens);
+  const results: TokenPnL[] = [];
+
+  for (let i = 0; i < tokens.length; i += 5) {
+    const batch = tokens.slice(i, i + 5);
+    const batchResults = await Promise.all(
+      batch.map(token => getTokenPnL(address, chain, token).catch(() => [])),
+    );
+    results.push(...batchResults.flat());
+    if (i + 5 < tokens.length) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  return results;
+}
+
+export { getChainIndex };

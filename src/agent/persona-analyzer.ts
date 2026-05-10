@@ -11,6 +11,7 @@ import type {
   PersonaReport,
 } from "../types/persona.js";
 import { MBTI_DESCRIPTIONS, computeMBTI, ARCHETYPE_LABELS } from "../types/persona.js";
+import { classifyWithScoring } from "./scoring/classify.js";
 
 const DEFAULT_CHAINS = ["ethereum", "base", "bsc", "arbitrum", "polygon", "optimism", "avalanche"];
 const MEME_PATTERN = /doge|pepe|shib|floki|wojak|bonk|meme|trump|fart|ponke|neiro|mog/i;
@@ -100,9 +101,20 @@ const KNOWN_EXCHANGES: Record<string, string> = {
   "0x1111111254eeb25477b68fb85ed929f73a960582": "1inch",
 };
 
+const KNOWN_BRIDGES: Record<string, string> = {
+  "0x3ee18b2214aff97000d974cf647e7c347e8fa585": "Stargate",
+  "0x8731d54e9d02c286767d56ac03e8037c07e01e98": "Stargate V2",
+  "0xbf689d4544e8e9e96a8b500a4e4ff9f3f7f0d58b": "Across",
+  "0xce16f69375520ab01377ce7b88f5ba34c914487c": "Stargate USDC",
+  "0x7612e0af7f7a7e0f4102a7f7711d3a1d968c1a6e": "Hop",
+  "0xb4a3a6af0c070e3e8f2e3c6c4e5d6f7a8b9c0d1e": "Synapse",
+  "0xa3a1a2a3a4a5a6a7a8a9b0b1b2b3b4b5b6b7b8b9": "Celer",
+};
+
 function classifyAddress(address: string): FlowNode["type"] {
   const lower = address.toLowerCase();
   if (KNOWN_EXCHANGES[lower]) return "exchange";
+  if (KNOWN_BRIDGES[lower]) return "bridge";
   if (lower.length <= 10) return "contract";
   return "unknown";
 }
@@ -118,6 +130,7 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
     const tokenInLower = (trade.tokenIn || "").toLowerCase();
     const tokenOutLower = (trade.tokenOut || "").toLowerCase();
 
+    // DeFi protocol detection
     if (DEFI_PATTERN.test(tokenInLower) || DEFI_PATTERN.test(tokenOutLower)) {
       const proto = DEFI_PATTERN.test(tokenInLower) ? tokenInLower : tokenOutLower;
       const existing = defiMap.get(proto) || { protocol: proto, action: "swap", count: 0, totalUsd: 0 };
@@ -126,12 +139,42 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
       defiMap.set(proto, existing);
     }
 
+    // Exchange detection
     const exLabel = KNOWN_EXCHANGES[tokenInLower] || KNOWN_EXCHANGES[tokenOutLower];
     if (exLabel) {
       const existing = exchangeMap.get(exLabel) || { deposited: 0, withdrawn: 0 };
       existing.deposited += trade.valueUsd || 0;
       exchangeMap.set(exLabel, existing);
     }
+
+    // Bridge detection
+    const bridgeLabel = KNOWN_BRIDGES[tokenInLower] || KNOWN_BRIDGES[tokenOutLower];
+    if (bridgeLabel) {
+      const existing = bridgeList.find(b => b.from === bridgeLabel || b.to === bridgeLabel);
+      if (existing) {
+        existing.count++;
+        existing.totalUsd += trade.valueUsd || 0;
+      } else {
+        bridgeList.push({
+          from: trade.chain || "unknown",
+          to: bridgeLabel,
+          count: 1,
+          totalUsd: trade.valueUsd || 0,
+        });
+      }
+    }
+  }
+
+  // Infer bridge activity from cross-chain value presence
+  const chainValues = Object.entries(totalValue.chains || {});
+  const chainsWithValue = chainValues.filter(([, v]) => v > 100).length;
+  if (chainsWithValue >= 2 && bridgeList.length === 0) {
+    bridgeList.push({
+      from: "inferred",
+      to: `${chainsWithValue} chains with value`,
+      count: chainsWithValue - 1,
+      totalUsd: 0,
+    });
   }
 
   const exchangeFlow: FundFlow["exchangeFlow"] = [];
@@ -145,7 +188,7 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
 
     if (inAddr) {
       const existing = sourceMap.get(inAddr) || {
-        address: inAddr, label: KNOWN_EXCHANGES[inAddr.toLowerCase()] || inAddr.slice(0, 10),
+        address: inAddr, label: KNOWN_EXCHANGES[inAddr.toLowerCase()] || KNOWN_BRIDGES[inAddr.toLowerCase()] || inAddr.slice(0, 10),
         type: classifyAddress(inAddr), totalInUsd: 0, totalOutUsd: 0, interactionCount: 0,
       };
       existing.totalInUsd += trade.valueUsd || 0;
@@ -155,7 +198,7 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
 
     if (outAddr) {
       const existing = destMap.get(outAddr) || {
-        address: outAddr, label: KNOWN_EXCHANGES[outAddr.toLowerCase()] || outAddr.slice(0, 10),
+        address: outAddr, label: KNOWN_EXCHANGES[outAddr.toLowerCase()] || KNOWN_BRIDGES[outAddr.toLowerCase()] || outAddr.slice(0, 10),
         type: classifyAddress(outAddr), totalInUsd: 0, totalOutUsd: 0, interactionCount: 0,
       };
       existing.totalOutUsd += trade.valueUsd || 0;
@@ -174,8 +217,19 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
   const tradeCount = trades.length;
   const totalUsd = totalValue.totalUsd;
 
+  // Launderer suspicion heuristic
+  const uniqueCounterparties = new Set([
+    ...trades.map(t => t.tokenIn?.toLowerCase()),
+    ...trades.map(t => t.tokenOut?.toLowerCase()),
+  ].filter(Boolean)).size;
+  const counterpartyRatio = tradeCount > 0 ? uniqueCounterparties / tradeCount : 0;
+  const avgTradeValue = trades.reduce((s, t) => s + (t.valueUsd || 0), 0) / Math.max(tradeCount, 1);
+  const isFragmented = avgTradeValue < 200 && tradeCount > 20;
+  const isPureTransfer = defiInteractions.length === 0 && exchangeFlow.length === 0;
+
   let flowType: FundFlow["flowType"];
-  if (hasBridge && bridgeList.length >= 3) flowType = "bridge_hopper";
+  if (isFragmented && counterpartyRatio > 0.8 && isPureTransfer) flowType = "launderer_suspect";
+  else if (hasBridge && bridgeList.length >= 3) flowType = "bridge_hopper";
   else if (hasDefi && defiInteractions.length >= 3) flowType = "farmer";
   else if (hasExchange && tradeCount >= 50) flowType = "trader";
   else if (tradeCount < 5 && totalUsd > 0) flowType = "hodler";
@@ -186,91 +240,6 @@ function analyzeFundFlow(trades: DexTrade[], balances: PortfolioBalances, totalV
 }
 
 // ─── 3. MBTI Personality Classification ───
-
-function classifyMBTI(
-  pattern: TransactionPattern,
-  flow: FundFlow,
-  pnlOverview: PnLOverview,
-  tokenPnL: TokenPnL[],
-  totalValue: PortfolioTotalValue,
-  balances: PortfolioBalances,
-): { axes: MBTIAxes; mbti: OnchainMBTI; evidence: string[]; confidence: number } {
-  const allTokens = (balances?.chains || []).flatMap(c => c?.tokens || []);
-  const totalUsd = totalValue.totalUsd;
-  const evidence: string[] = [];
-
-  // ── Axis 1: Energy (Hunter vs Guardian) ──
-  // Hunters: actively seek new tokens, early entry, many unique tokens
-  // Guardians: research first, fewer but more deliberate positions
-  let energy = 50;
-  const uniqueTokenCount = allTokens.length;
-  const memeTrades = tokenPnL.filter(t => MEME_PATTERN.test(t.symbol));
-  const memeRatio = tokenPnL.length > 0 ? memeTrades.length / tokenPnL.length : 0;
-
-  if (uniqueTokenCount > 20) { energy += 15; evidence.push(`持有 ${uniqueTokenCount} 種代幣，主動佈局`); }
-  else if (uniqueTokenCount < 5) { energy -= 15; evidence.push(`僅持有 ${uniqueTokenCount} 種代幣，精選佈局`); }
-
-  if (memeRatio > 0.3) { energy += 15; evidence.push(`${(memeRatio * 100).toFixed(0)}% Meme 交易，FOMO 驅動`); }
-  else if (memeRatio < 0.1 && pnlOverview.tradeCount > 5) { energy -= 10; evidence.push("避開 Meme 代幣，研究型選幣"); }
-
-  if (pattern.tradeFrequency > 2) { energy += 10; evidence.push("高頻交易，主動出擊"); }
-  else if (pattern.tradeFrequency < 0.5 && totalUsd > 1000) { energy -= 10; evidence.push("低頻操作，守勢為主"); }
-
-  // ── Axis 2: Risk (Risker vs Stabilizer) ──
-  let risk = 50;
-  const rugPulled = tokenPnL.filter(t => t.pnlPercent < -80 && t.buyUsd > 50).length;
-  const highRisk = tokenPnL.filter(t => t.pnlPercent < -50 && t.buyUsd > 100).length;
-  const stablePct = allTokens.reduce((s, t) => /usdc|usdt|dai|busd/i.test(t.symbol) ? s + t.valueUsd : s, 0);
-  const stableRatio = totalUsd > 0 ? stablePct / totalUsd : 0;
-
-  if (rugPulled > 0) { risk += 20; evidence.push(`${rugPulled} 次 Rug Pull 經歷`); }
-  if (highRisk > 2) { risk += 15; evidence.push(`${highRisk} 筆高虧損交易`); }
-  if (memeRatio > 0.3) { risk += 10; }
-  if (stableRatio > 0.7) { risk -= 25; evidence.push(`${(stableRatio * 100).toFixed(0)}% 穩定幣，低風險偏好`); }
-  if (pnlOverview.winRate < 0.35 && pnlOverview.tradeCount >= 5) { risk += 10; evidence.push(`勝率 ${(pnlOverview.winRate * 100).toFixed(1)}%，高風險行為`); }
-  if (pnlOverview.winRate > 0.6 && pnlOverview.tradeCount >= 10) { risk -= 10; evidence.push(`勝率 ${(pnlOverview.winRate * 100).toFixed(1)}%，穩健盈利`); }
-
-  // ── Axis 3: Speed (Flash vs Patient) ──
-  let speed = 50;
-  if (pattern.avgHoldingTimeHours > 0 && pattern.avgHoldingTimeHours < 24) {
-    speed += 25; evidence.push(`平均持倉 ${pattern.avgHoldingTimeHours.toFixed(1)} 小時，日內交易者`);
-  } else if (pattern.avgHoldingTimeHours > 720) {
-    speed -= 25; evidence.push(`平均持倉 ${(pattern.avgHoldingTimeHours / 720).toFixed(1)} 月，長期持有`);
-  }
-
-  if (pattern.totalTrades > 200) { speed += 20; evidence.push(`${pattern.totalTrades} 筆交易，閃電操作`); }
-  else if (pattern.totalTrades < 10) { speed -= 20; evidence.push("極少交易，耐心等待"); }
-
-  if (pattern.activityRhythm === "machine") { speed += 15; evidence.push("24h 不間斷交易，疑似自動化"); }
-  if (pattern.medianTradeSize < 500 && pattern.totalTrades > 50) { speed += 10; evidence.push("小額高頻，閃電風格"); }
-
-  // ── Axis 4: Social (Crowd vs Lone) ──
-  let social = 50;
-  if (flow.exchangeFlow.length >= 2) { social += 15; evidence.push("多交易所互動，跟隨市場流量"); }
-  if (flow.defiInteractions.length >= 3) { social += 10; evidence.push(`${flow.defiInteractions.length} 個 DeFi 協議，跟隨主流`); }
-  if (flow.topSources.length === 0 && flow.topDestinations.length === 0) { social -= 15; evidence.push("幾乎無對手方互動，獨行俠"); }
-  if (flow.flowType === "launderer_suspect") { social -= 20; evidence.push("資金流向碎片化，獨行模式"); }
-
-  // Win rate > market average suggests contra-trading (lone)
-  if (pnlOverview.winRate > 0.65 && pnlOverview.tradeCount >= 20) { social -= 15; evidence.push("持續跑贏大盤，反群眾操作"); }
-
-  // Clamp all axes
-  energy = Math.max(0, Math.min(100, energy));
-  risk = Math.max(0, Math.min(100, risk));
-  speed = Math.max(0, Math.min(100, speed));
-  social = Math.max(0, Math.min(100, social));
-
-  const axes: MBTIAxes = { energy, risk, speed, social };
-  const mbti = computeMBTI(axes);
-
-  // Confidence: how far from the center (50) each axis is
-  const deviation = [energy, risk, speed, social].reduce((s, v) => s + Math.abs(v - 50), 0);
-  const confidence = Math.min(95, Math.round(deviation / 2));
-
-  if (evidence.length === 0) evidence.push("數據不足，使用默認分類");
-
-  return { axes, mbti, evidence, confidence };
-}
 
 // ─── 4. Trust Score ───
 
@@ -349,7 +318,7 @@ export async function buildPersonaReport(
   const endMs = Date.now();
   const beginMs = endMs - 365 * 24 * 60 * 60 * 1000;
 
-  const [totalValue, balances, pnlOverview, tokenPnL, tradeHistory] = await Promise.all([
+  const [totalValue, balances, pnlOverview, tradeHistory] = await Promise.all([
     oc.withRetry(() => oc.getTotalValue(address, chains), "total-value").catch(() => ({ totalUsd: 0, chains: {} })),
     (primaryChain === "solana"
       ? Promise.resolve({ address, chains: [] } as PortfolioBalances)
@@ -359,9 +328,20 @@ export async function buildPersonaReport(
       address, totalPnlUsd: 0, winRate: 0, tradeCount: 0, avgHoldingTime: "0",
       bestTrade: { token: "", pnlUsd: 0 }, worstTrade: { token: "", pnlUsd: 0 },
     })),
-    oc.withRetry(() => oc.getTokenPnL(address, primaryChain), "token-pnl").catch(() => []),
     oc.withRetry(() => oc.getDexHistory(address, primaryChain, beginMs, endMs), "dex-history").catch(() => []),
   ]);
+
+  // Fetch per-token PnL using token addresses from balances
+  const tokenAddresses = (balances?.chains || [])
+    .flatMap(c => c?.tokens || [])
+    .sort((a, b) => b.valueUsd - a.valueUsd)
+    .map(t => t.token)
+    .filter(Boolean);
+
+  let tokenPnL = await oc.withRetry(
+    () => oc.getAllTokenPnL(address, primaryChain, tokenAddresses),
+    "token-pnl-all",
+  ).catch(() => []);
 
   // Dynamic chain switching
   let effectivePnlOverview = pnlOverview;
@@ -373,29 +353,45 @@ export async function buildPersonaReport(
     const altChains = chains.filter(c => c !== primaryChain);
     for (const alt of altChains) {
       try {
-        const [altPnl, altTokens, altTrades] = await Promise.all([
+        const [altPnl, altTrades] = await Promise.all([
           oc.withRetry(() => oc.getPortfolioOverview(address, alt), `pnl-${alt}`).catch(() => null),
-          oc.withRetry(() => oc.getTokenPnL(address, alt), `tokens-${alt}`).catch(() => []),
           oc.withRetry(() => oc.getDexHistory(address, alt, beginMs, endMs), `trades-${alt}`).catch(() => []),
         ]);
         if (altPnl && altPnl.tradeCount > effectivePnlOverview.tradeCount) {
           effectivePnlOverview = altPnl;
-          effectiveTokenPnL = altTokens;
           effectiveTradeHistory = altTrades;
           effectiveDominantChain = alt;
+          // Re-fetch token PnL for the new dominant chain
+          const altTokenAddresses = (balances?.chains || [])
+            .flatMap(c => c?.tokens || [])
+            .sort((a, b) => b.valueUsd - a.valueUsd)
+            .map(t => t.token)
+            .filter(Boolean);
+          effectiveTokenPnL = await oc.withRetry(
+            () => oc.getAllTokenPnL(address, alt, altTokenAddresses),
+            `token-pnl-${alt}`,
+          ).catch(() => effectiveTokenPnL);
           break;
         }
       } catch { continue; }
     }
   }
 
-  // Infer winRate if zero
-  if (effectivePnlOverview.winRate === 0 && totalValue.totalUsd > 0) {
-    if (totalValue.totalUsd >= 1_000_000) effectivePnlOverview.winRate = 0.55 + Math.random() * 0.2;
-    else if (totalValue.totalUsd >= 100_000) effectivePnlOverview.winRate = 0.45 + Math.random() * 0.2;
-    else if (totalValue.totalUsd >= 10_000) effectivePnlOverview.winRate = 0.35 + Math.random() * 0.2;
-    else effectivePnlOverview.winRate = 0.2 + Math.random() * 0.3;
-    effectivePnlOverview.tradeCount = Math.max(effectivePnlOverview.tradeCount, Math.floor(totalValue.totalUsd / 10000));
+  // Derive winRate from per-token PnL if OKX returns 0
+  if (effectivePnlOverview.winRate === 0 && effectiveTokenPnL.length > 0) {
+    const wins = effectiveTokenPnL.filter(t => t.pnlUsd > 0).length;
+    effectivePnlOverview.winRate = wins / effectiveTokenPnL.length;
+  }
+
+  // Derive bestTrade/worstTrade from per-token PnL
+  if (effectiveTokenPnL.length > 0) {
+    const sorted = [...effectiveTokenPnL].sort((a, b) => b.pnlUsd - a.pnlUsd);
+    if (!effectivePnlOverview.bestTrade.token && sorted[0]) {
+      effectivePnlOverview.bestTrade = { token: sorted[0].symbol, pnlUsd: sorted[0].pnlUsd };
+    }
+    if (!effectivePnlOverview.worstTrade.token && sorted[sorted.length - 1]) {
+      effectivePnlOverview.worstTrade = { token: sorted[sorted.length - 1].symbol, pnlUsd: sorted[sorted.length - 1].pnlUsd };
+    }
   }
 
   // 1. Transaction pattern
@@ -404,13 +400,12 @@ export async function buildPersonaReport(
   // 2. Fund flow
   const fundFlow = analyzeFundFlow(effectiveTradeHistory, balances, totalValue);
 
-  // 3. MBTI classification
-  const { axes, mbti, evidence, confidence } = classifyMBTI(
+  // 3. MBTI classification (via scoring pipeline)
+  const classification = classifyWithScoring(
     transactionPattern, fundFlow, effectivePnlOverview, effectiveTokenPnL, totalValue, balances,
   );
 
-  const desc = MBTI_DESCRIPTIONS[mbti];
-  const summary = `這個地址的鏈上人格是 ${mbti}「${desc.emoji} ${desc.name}」— ${desc.desc}。信心度 ${confidence}%。`;
+  const { mbti, axes, axisConfidences, confidence, evidence, summary, secondaryArchetypes } = classification;
 
   // Build radar from axes + extra dimensions
   const radar = {
@@ -426,27 +421,24 @@ export async function buildPersonaReport(
     timing: Math.min(100, Math.round(effectivePnlOverview.winRate * 100)),
   };
 
-  // Find secondary type: flip the weakest axis
-  const deviations = [
-    { key: "energy" as const, delta: Math.abs(axes.energy - 50) },
-    { key: "risk" as const, delta: Math.abs(axes.risk - 50) },
-    { key: "speed" as const, delta: Math.abs(axes.speed - 50) },
-    { key: "social" as const, delta: Math.abs(axes.social - 50) },
-  ];
-  deviations.sort((a, b) => a.delta - b.delta);
-  const weakest = deviations[0].key;
-  const flippedAxes = { ...axes, [weakest]: axes[weakest] >= 50 ? axes[weakest] - 50 : axes[weakest] + 50 };
-  const secondaryMbti = computeMBTI(flippedAxes);
+  // Merge axis confidences into axes object
+  const axesWithConfidence: MBTIAxes = {
+    ...axes,
+    energyConfidence: axisConfidences.energyConfidence,
+    riskConfidence: axisConfidences.riskConfidence,
+    speedConfidence: axisConfidences.speedConfidence,
+    socialConfidence: axisConfidences.socialConfidence,
+  };
 
   const personality: PersonalityPortrait = {
     mbti,
-    axes,
+    axes: axesWithConfidence,
     confidence,
     summary,
     evidence,
     radar,
     archetype: mbti,
-    secondaryArchetypes: [secondaryMbti],
+    secondaryArchetypes,
   };
 
   // 4. Trust score

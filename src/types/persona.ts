@@ -67,6 +67,11 @@ export interface MBTIAxes {
   speed: number;
   /** Social: 0-100, >50 = Crowd, <50 = Lone */
   social: number;
+  /** Per-axis confidence 0-100 */
+  energyConfidence?: number;
+  riskConfidence?: number;
+  speedConfidence?: number;
+  socialConfidence?: number;
 }
 
 export function computeMBTI(axes: MBTIAxes): OnchainMBTI {

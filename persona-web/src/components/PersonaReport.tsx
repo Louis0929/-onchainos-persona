@@ -87,7 +87,9 @@ function MBTIBadge({ mbti }: { mbti: OnchainMBTI }) {
   );
 }
 
-function AxisBar({ axis, value }: { axis: keyof MBTIAxes; value: number }) {
+type AxisKey = "energy" | "risk" | "speed" | "social";
+
+function AxisBar({ axis, value, confidence }: { axis: AxisKey; value: number; confidence?: number }) {
   const labels = AXIS_LABELS[axis];
   const leftActive = value < 50;
   const rightActive = value >= 50;
@@ -95,7 +97,7 @@ function AxisBar({ axis, value }: { axis: keyof MBTIAxes; value: number }) {
     <div className="mb-3">
       <div className="flex justify-between text-[10px] mb-1">
         <span className={leftActive ? "text-cyber-accent font-bold" : "text-gray-600"}>{labels.left}</span>
-        <span className="text-gray-700 font-mono">{labels.letter}</span>
+        <span className="text-gray-700 font-mono">{labels.letter} {confidence !== undefined ? <span className="text-gray-500">({confidence}%)</span> : null}</span>
         <span className={rightActive ? "text-cyber-pink font-bold" : "text-gray-600"}>{labels.right}</span>
       </div>
       <div className="relative h-3 bg-cyber-dark rounded-full overflow-hidden">
@@ -105,6 +107,7 @@ function AxisBar({ axis, value }: { axis: keyof MBTIAxes; value: number }) {
           style={{
             width: `${value}%`,
             backgroundColor: rightActive ? "#ff00aa" : "#00f0ff",
+            opacity: confidence !== undefined ? 0.4 + (confidence / 100) * 0.6 : 1,
           }}
         />
       </div>
@@ -214,10 +217,10 @@ export default function PersonaReport({ report }: { report: PersonaReportType })
         {/* MBTI Axes */}
         <div className="cyber-border rounded-lg p-6 bg-cyber-panel">
           <h3 className="text-sm font-semibold text-gray-400 mb-4">🧬 MBTI 四維度</h3>
-          <AxisBar axis="energy" value={axes.energy} />
-          <AxisBar axis="risk" value={axes.risk} />
-          <AxisBar axis="speed" value={axes.speed} />
-          <AxisBar axis="social" value={axes.social} />
+          <AxisBar axis="energy" value={axes.energy} confidence={axes.energyConfidence} />
+          <AxisBar axis="risk" value={axes.risk} confidence={axes.riskConfidence} />
+          <AxisBar axis="speed" value={axes.speed} confidence={axes.speedConfidence} />
+          <AxisBar axis="social" value={axes.social} confidence={axes.socialConfidence} />
           <div className="mt-4 text-center">
             <span className="text-2xl font-bold text-cyber-accent font-mono tracking-widest">
               {mbti}
