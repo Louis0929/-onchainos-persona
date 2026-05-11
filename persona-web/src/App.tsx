@@ -1,6 +1,8 @@
 import { useState } from "react";
-import PersonaReport from "./components/PersonaReport";
+import PersonaReportComponent from "./components/PersonaReport";
+import MBTIGallery from "./components/MBTIGallery";
 import type { PersonaReport as PersonaReportType } from "./types";
+import { MBTI_DESCRIPTIONS } from "./types";
 
 const API_BASE = "/api";
 
@@ -9,12 +11,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<PersonaReportType | null>(null);
   const [error, setError] = useState("");
+  const [showGallery, setShowGallery] = useState(true);
 
   const analyze = async () => {
     if (!address.trim()) return;
     setLoading(true);
     setError("");
     setReport(null);
+    setShowGallery(false);
 
     try {
       const res = await fetch(`${API_BASE}/persona`, {
@@ -40,17 +44,22 @@ export default function App() {
       {/* Header */}
       <header className="border-b border-cyber-border bg-cyber-panel/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setReport(null); setShowGallery(true); }}>
             <span className="text-2xl">🧬</span>
             <h1 className="text-xl font-bold text-cyber-accent cyber-glow">
               OnChainOS Persona
             </h1>
             <span className="text-[10px] text-cyber-pink font-mono">MBTI</span>
-            <span className="text-xs text-gray-500 border border-cyber-border rounded px-2 py-0.5">
-              v0.1.0
-            </span>
           </div>
-          <span className="text-xs text-gray-600">鏈上身分畫像引擎</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setShowGallery(!showGallery); if (showGallery) setReport(null); }}
+              className="text-xs text-gray-500 hover:text-cyber-accent transition"
+            >
+              {showGallery ? "隱藏圖鑑" : "查看圖鑑"}
+            </button>
+            <span className="text-xs text-gray-600">鏈上身分畫像引擎</span>
+          </div>
         </div>
       </header>
 
@@ -94,10 +103,13 @@ export default function App() {
         )}
 
         {/* Report */}
-        {report && <PersonaReport report={report} />}
+        {report && <PersonaReportComponent report={report} />}
 
-        {/* Empty state */}
-        {!report && !loading && !error && (
+        {/* MBTI Gallery */}
+        {showGallery && !report && !loading && <MBTIGallery />}
+
+        {/* Empty state when gallery is hidden */}
+        {!showGallery && !report && !loading && !error && (
           <div className="mt-16 text-center text-gray-600">
             <div className="text-6xl mb-4">🎭</div>
             <p className="text-lg">輸入地址，揭開鏈上身分</p>

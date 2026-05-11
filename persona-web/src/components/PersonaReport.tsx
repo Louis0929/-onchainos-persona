@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import type { PersonaReport as PersonaReportType, OnchainMBTI, MBTIAxes } from "../types";
 import { MBTI_DESCRIPTIONS, AXIS_LABELS } from "../types";
 
@@ -81,7 +82,8 @@ function MBTIBadge({ mbti }: { mbti: OnchainMBTI }) {
       <span className="text-3xl">{desc.emoji}</span>
       <div>
         <div className="text-xs text-gray-500 font-mono tracking-wider">{mbti}</div>
-        <div className="text-lg font-bold text-cyber-accent">{desc.name}</div>
+        <div className="text-lg font-bold text-cyber-accent">{desc.nameZh}</div>
+        <div className="text-[10px] text-gray-600">{desc.name}</div>
       </div>
     </div>
   );
@@ -158,6 +160,75 @@ function SizeChart({ dist }: { dist: PersonaReportType["transactionPattern"]["si
   );
 }
 
+const API_BASE = "/api";
+
+interface SimilarAddr {
+  address: string;
+  mbti: OnchainMBTI;
+  similarity: number;
+  totalUsd: number;
+  note: string;
+}
+
+function SimilarAddresses({ address, mbti }: { address: string; mbti: OnchainMBTI }) {
+  const [similar, setSimilar] = useState<SimilarAddr[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/similar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setSimilar(data.similar || []);
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [address]);
+
+  if (loading) {
+    return (
+      <div className="cyber-border rounded-lg p-6 bg-cyber-panel">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3">🔗 相似地址</h3>
+        <p className="text-xs text-gray-600">搜尋中...</p>
+      </div>
+    );
+  }
+
+  if (similar.length === 0) return null;
+
+  return (
+    <div className="cyber-border rounded-lg p-6 bg-cyber-panel">
+      <h3 className="text-sm font-semibold text-gray-400 mb-3">🔗 相似地址推薦</h3>
+      <p className="text-xs text-gray-500 mb-3">與你相同 MBTI 類型 ({mbti}) 的鏈上身分</p>
+      <div className="space-y-2">
+        {similar.map((s, i) => {
+          const sDesc = MBTI_DESCRIPTIONS[s.mbti];
+          return (
+            <div key={i} className="flex items-center gap-3 bg-cyber-dark rounded p-3">
+              <span className="text-lg">{sDesc.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-300 font-mono truncate">{s.address}</div>
+                <div className="text-[10px] text-gray-500">{sDesc.nameZh} ({s.mbti}) · {s.note}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs text-cyber-accent font-mono">{(s.similarity * 100).toFixed(0)}%</div>
+                <div className="text-[10px] text-gray-600">相似度</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PersonaReport({ report }: { report: PersonaReportType }) {
   const mbti = report.personality.mbti;
   const desc = MBTI_DESCRIPTIONS[mbti];
@@ -186,7 +257,7 @@ export default function PersonaReport({ report }: { report: PersonaReportType })
               const sd = MBTI_DESCRIPTIONS[a];
               return (
                 <span key={a} className="text-xs border border-cyber-border rounded px-2 py-0.5 text-gray-400">
-                  {a} {sd.emoji} {sd.name}
+                  {a} {sd.emoji} {sd.nameZh}
                 </span>
               );
             })}
@@ -346,6 +417,9 @@ export default function PersonaReport({ report }: { report: PersonaReportType })
           )}
         </div>
       </div>
+
+      {/* Similar Addresses */}
+      <SimilarAddresses address={report.address} mbti={mbti} />
 
       {/* Footer */}
       <div className="text-center text-[10px] text-gray-700 pb-8">

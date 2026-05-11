@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "onchainos": {
+      "command": "C:\\Users\\Louis Yeung\\.local\\bin\\onchainos.exe",
+      "args": ["mcp"],
+      "type": "stdio"
+    }
+  }
+}

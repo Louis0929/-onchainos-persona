@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { buildPersonaReport } from "./persona-analyzer.js";
 import { MBTI_DESCRIPTIONS, ARCHETYPE_LABELS } from "../types/persona.js";
 
@@ -22,7 +23,7 @@ console.log("═".repeat(60));
 console.log(`  🧬 PERSONA REPORT: ${address.slice(0, 10)}...${address.slice(-8)}`);
 console.log("═".repeat(60));
 
-console.log(`\n🎭 On-chain MBTI: ${mbti} — ${desc.emoji} ${desc.name}`);
+console.log(`\n🎭 On-chain MBTI: ${mbti} — ${desc.emoji} ${desc.nameZh} (${desc.name})`);
 console.log(`   ${desc.desc}`);
 console.log(`   Confidence: ${report.personality.confidence}%`);
 console.log(`   Secondary:  ${report.personality.secondaryArchetypes[0]} (${ARCHETYPE_LABELS[report.personality.secondaryArchetypes[0]]})`);
